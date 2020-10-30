@@ -425,7 +425,15 @@ namespace UnityEngine.Rendering.Universal
 #endif
                     // renderscale only applies to basecamera
                     overlayCameraData.renderScale = 1.0f;
-
+			
+			Rect cameraRect = currCamera.rect;
+			overlayCameraData.pixelRect = currCamera.pixelRect;
+			overlayCameraData.pixelWidth = currCamera.pixelWidth;
+			overlayCameraData.pixelHeight = currCamera.pixelHeight;
+			overlayCameraData.aspectRatio = (float)overlayCameraData.pixelWidth / (float)overlayCameraData.pixelHeight;
+			overlayCameraData.isDefaultViewport = (!(Math.Abs(cameraRect.x) > 0.0f || Math.Abs(cameraRect.y) > 0.0f ||
+				Math.Abs(cameraRect.width) < 1.0f || Math.Abs(cameraRect.height) < 1.0f));
+			
                     UpdateVolumeFramework(currCamera, currCameraData);
                     InitializeAdditionalCameraData(currCamera, currCameraData, ref overlayCameraData);
 
