@@ -262,11 +262,12 @@ namespace UnityEngine.Rendering.Universal
 
             ProfilingSampler sampler = (asset.debugLevel >= PipelineDebugLevel.Profiling) ? new ProfilingSampler(camera.name): _CameraProfilingSampler;
             CommandBuffer cmd = CommandBufferPool.Get(sampler.name);
+
             using (new ProfilingScope(cmd, sampler))
             {
                 renderer.Clear(cameraData.renderType);
                 renderer.SetupCullingParameters(ref cullingParameters, ref cameraData);
-
+            
                 context.ExecuteCommandBuffer(cmd);
                 cmd.Clear();
 
@@ -285,11 +286,11 @@ namespace UnityEngine.Rendering.Universal
                 if (asset.useAdaptivePerformance)
                     ApplyAdaptivePerformance(ref renderingData);
 #endif
-
+               
                 renderer.Setup(context, ref renderingData);
                 renderer.Execute(context, ref renderingData);
             }
-
+    
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
             context.Submit();
@@ -417,26 +418,24 @@ namespace UnityEngine.Rendering.Universal
                     //It should be called before culling to prepare material. When there isn't any VisualEffect component, this method has no effect.
                     VFX.VFXManager.PrepareCamera(currCamera);
 #endif
-                    if (i == 0)
-                    {
-                        overlayCameraData.renderScale = 1.0f;
+                    overlayCameraData.renderScale = 1.0f;
 
-                        Rect cameraRect = currCamera.rect;
+                    Rect cameraRect = currCamera.rect;
 
-                        overlayCameraData.pixelRect = currCamera.pixelRect;
-                        overlayCameraData.pixelWidth = currCamera.pixelWidth;
-                        overlayCameraData.pixelHeight = currCamera.pixelHeight;
-                        overlayCameraData.aspectRatio = (float)overlayCameraData.pixelWidth / (float)overlayCameraData.pixelHeight;
-                        overlayCameraData.isDefaultViewport = (!(Math.Abs(cameraRect.x) > 0.0f || Math.Abs(cameraRect.y) > 0.0f ||
-                            Math.Abs(cameraRect.width) < 1.0f || Math.Abs(cameraRect.height) < 1.0f));
+                    overlayCameraData.pixelRect = currCamera.pixelRect;
+                    overlayCameraData.pixelWidth = currCamera.pixelWidth;
+                    overlayCameraData.pixelHeight = currCamera.pixelHeight;
+                    overlayCameraData.aspectRatio = (float)overlayCameraData.pixelWidth / (float)overlayCameraData.pixelHeight;
 
+                    //if (i == 0)
+                    //{
                         int msaaSamples = 1;
                         if (baseCamera.allowMSAA && asset.msaaSampleCount > 1)
                             msaaSamples = (baseCamera.targetTexture != null) ? baseCamera.targetTexture.antiAliasing : asset.msaaSampleCount;
 
                         overlayCameraData.cameraTargetDescriptor = CreateRenderTextureDescriptor(currCamera, overlayCameraData.renderScale,
         baseCameraData.isStereoEnabled, baseCameraData.isHdrEnabled, msaaSamples, Graphics.preserveFramebufferAlpha);
-                    }
+                   // }
 
                     UpdateVolumeFramework(currCamera, currCameraData);
                     InitializeAdditionalCameraData(currCamera, currCameraData, lastCamera, ref overlayCameraData);
@@ -732,7 +731,7 @@ namespace UnityEngine.Rendering.Universal
             // Overlay cameras inherit viewport from base.
             // If the viewport is different between them we might need to patch the projection to adjust aspect ratio
             // matrix to prevent squishing when rendering objects in overlay cameras.
-            if (isOverlayCamera && !camera.orthographic && !cameraData.isStereoEnabled && cameraData.pixelRect != camera.pixelRect)
+            if (isOverlayCamera && !camera.orthographic && !cameraData.isStereoEnabled )
             {
                 // m00 = (cotangent / aspect), therefore m00 * aspect gives us cotangent.
                 float cotangent = camera.projectionMatrix.m00 * camera.aspect;

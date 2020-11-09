@@ -46,8 +46,7 @@ namespace UnityEngine.Rendering.Universal
         RenderTargetHandle m_OpaqueColor;
         RenderTargetHandle m_AfterPostProcessColor;
         RenderTargetHandle m_ColorGradingLut;
-        RenderTargetHandle m_RenderScale;
-
+   
         ForwardLights m_ForwardLights;
         StencilState m_DefaultStencilState;
 
@@ -56,7 +55,9 @@ namespace UnityEngine.Rendering.Universal
         Material m_SamplingMaterial;
         Material m_ScreenspaceShadowsMaterial;
 
-        bool m_bGalaCustom = false;
+        //custom
+        RenderTargetHandle m_RenderScale;
+        bool m_bCustom = false;
 
         public ForwardRenderer(ForwardRendererData data) : base(data)
         {
@@ -235,7 +236,7 @@ namespace UnityEngine.Rendering.Universal
             if (cameraData.renderType == CameraRenderType.Base)
             {
                 if(cameraData.renderScale != 1.0f)
-                    m_bGalaCustom = true;
+                    m_bCustom = true;
 
                 m_ActiveCameraColorAttachment = (createColorTexture) ? m_CameraColorAttachment : RenderTargetHandle.CameraTarget;
 				m_ActiveCameraDepthAttachment = (createDepthTexture) ? m_CameraDepthAttachment : RenderTargetHandle.CameraTarget;
@@ -249,31 +250,37 @@ namespace UnityEngine.Rendering.Universal
 
 				// if rendering to intermediate render texture we don't have to create msaa backbuffer
 				int backbufferMsaaSamples = (intermediateRenderTexture) ? 1 : cameraTargetDescriptor.msaaSamples;
-
+                
 				if (Camera.main == camera && camera.cameraType == CameraType.Game && cameraData.targetTexture == null)
 					SetupBackbufferFormat(backbufferMsaaSamples, isStereoEnabled);
                 
             }
-            else if (m_bGalaCustom)
+            else if(m_bCustom)
             {
-                m_bGalaCustom = false;
+
+                m_bCustom = false;
 
                 m_ActiveCameraColorAttachment = m_CameraColorAttachment;
                 m_ActiveCameraDepthAttachment = m_CameraDepthAttachment;
 
                 bool intermediateRenderTexture = createColorTexture || createDepthTexture;
 
-                CommandBuffer cmd = CommandBufferPool.Get("dkdlrhtlqkfmndkas");
+                CommandBuffer cmd = CommandBufferPool.Get("CustomCommand");
+
                 var descriptor = cameraData.cameraTargetDescriptor;
+
                 int msaaSamples = descriptor.msaaSamples;
-
+                descriptor.width = Screen.width;
+                descriptor.height = Screen.height;
                 var colorDescriptor = descriptor;
-
+                           
                 cmd.GetTemporaryRT(m_RenderScale.id, colorDescriptor, FilterMode.Bilinear);
                 cmd.Blit(BuiltinRenderTextureType.CurrentActive, m_RenderScale.id);
+
                 int nId = m_ActiveCameraColorAttachment.id;
                 m_ActiveCameraColorAttachment.id = m_RenderScale.id;
                 cmd.ReleaseTemporaryRT(nId);
+
                 var depthDescriptor = descriptor;
                 depthDescriptor.colorFormat = RenderTextureFormat.Depth;
                 depthDescriptor.depthBufferBits = k_DepthStencilBufferBits;
@@ -348,8 +355,8 @@ namespace UnityEngine.Rendering.Universal
             // If a depth texture was created we necessarily need to copy it, otherwise we could have render it to a renderbuffer
             if (!requiresDepthPrepass && renderingData.cameraData.requiresDepthTexture && createDepthTexture)
             {
-                m_CopyDepthPass.Setup(m_ActiveCameraDepthAttachment, m_DepthTexture);
-                EnqueuePass(m_CopyDepthPass);
+                 m_CopyDepthPass.Setup(m_ActiveCameraDepthAttachment, m_DepthTexture);
+                 EnqueuePass(m_CopyDepthPass);
             }
 
             if (renderingData.cameraData.requiresOpaqueTexture)
@@ -653,6 +660,61 @@ namespace UnityEngine.Rendering.Universal
             //bool msaaDepthResolve = msaaEnabledForCamera && SystemInfo.supportsMultisampledTextures != 0;
             bool msaaDepthResolve = false;
             return supportsDepthCopy || msaaDepthResolve;
+        }
+
+        RenderTextureDescriptor CreateRenderTextureDescriptor(Camera camera, float renderScale,
+            bool isStereoEnabled, bool isHdrEnabled, int msaaSamples, bool needsAlpha)
+        {
+            RenderTextureDescriptor desc;
+            UnityEngine.Experimental.Rendering.GraphicsFormat renderTextureFormatDefault = SystemInfo.GetGraphicsFormat(UnityEngine.Experimental.Rendering.DefaultFormat.LDR);
+
+            // NB: There's a weird case about XR and render texture
+            // In test framework currently we render stereo tests to target texture
+            // The descriptor in that case needs to be initialized from XR eyeTexture not render texture
+            // Otherwise current tests will fail. Check: Do we need to update the test images instead?
+            if (isStereoEnabled)
+            {
+                desc = XRGraphics.eyeTextureDesc;
+                renderTextureFormatDefault = desc.graphicsFormat;
+            }
+            else if (camera.targetTexture == null)
+            {
+                desc = new RenderTextureDescriptor(camera.pixelWidth, camera.pixelHeight);
+                desc.width = (int)((float)desc.width * renderScale);
+                desc.height = (int)((float)desc.height * renderScale);
+            }
+            else
+            {
+                desc = camera.targetTexture.descriptor;
+            }
+
+            if (camera.targetTexture != null)
+            {
+                desc.colorFormat = camera.targetTexture.descriptor.colorFormat;
+                desc.depthBufferBits = camera.targetTexture.descriptor.depthBufferBits;
+                desc.msaaSamples = camera.targetTexture.descriptor.msaaSamples;
+                desc.sRGB = camera.targetTexture.descriptor.sRGB;
+            }
+            else
+            {
+                UnityEngine.Experimental.Rendering.GraphicsFormat hdrFormat;
+                if (!needsAlpha && RenderingUtils.SupportsGraphicsFormat(UnityEngine.Experimental.Rendering.GraphicsFormat.B10G11R11_UFloatPack32, UnityEngine.Experimental.Rendering.FormatUsage.Linear | UnityEngine.Experimental.Rendering.FormatUsage.Render))
+                    hdrFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.B10G11R11_UFloatPack32;
+                else if (RenderingUtils.SupportsGraphicsFormat(UnityEngine.Experimental.Rendering.GraphicsFormat.R16G16B16A16_SFloat, UnityEngine.Experimental.Rendering.FormatUsage.Linear | UnityEngine.Experimental.Rendering.FormatUsage.Render))
+                    hdrFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.R16G16B16A16_SFloat;
+                else
+                    hdrFormat = SystemInfo.GetGraphicsFormat(UnityEngine.Experimental.Rendering.DefaultFormat.HDR); // This might actually be a LDR format on old devices.
+
+                desc.graphicsFormat = isHdrEnabled ? hdrFormat : renderTextureFormatDefault;
+                desc.depthBufferBits = 32;
+                desc.msaaSamples = msaaSamples;
+                desc.sRGB = (QualitySettings.activeColorSpace == ColorSpace.Linear);
+            }
+
+            desc.enableRandomWrite = false;
+            desc.bindMS = false;
+            desc.useDynamicScale = camera.allowDynamicResolution;
+            return desc;
         }
     }
 }
